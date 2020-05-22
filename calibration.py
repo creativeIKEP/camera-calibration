@@ -54,37 +54,49 @@ def reporojection(camera_parameter_mat, world_points, camera_imagename):
     plt.show()
 
 def separate_param(camera_parameter_mat):
-    internal_param = np.zeros((3, 3))
-    external_param = np.zeros((4, 4))
-    internal_param[2][2] = 1
-    external_param[3][3] = 1
-
-    cp31 = camera_parameter_mat[2][0]
-    cp32 = camera_parameter_mat[2][1]
-    cp33 = camera_parameter_mat[2][2]
-    scale = 1.0 / math.sqrt(cp31*cp31 + cp32*cp32 + cp33*cp33)
+    c31 = camera_parameter_mat[2][0]
+    c32 = camera_parameter_mat[2][1]
+    c33 = camera_parameter_mat[2][2]
+    scale = 1.0 / math.sqrt(c31*c31 + c32*c32 + c33*c33)
     camera_parameter_mat *= scale
-    external_param[2] = camera_parameter_mat[2]
 
-    internal_param[0][2] = np.dot(camera_parameter_mat[0][0:3], camera_parameter_mat[2][0:3])
-    internal_param[1][2] = np.dot(camera_parameter_mat[1][0:3], camera_parameter_mat[2][0:3])
+    r3 = camera_parameter_mat[2][0:3]
+    tz = camera_parameter_mat[2][3]
+    c1 = camera_parameter_mat[0][0:3]
+    c2 = camera_parameter_mat[1][0:3]
+    c3 = camera_parameter_mat[2][0:3]
 
-    c1c3_cross = np.cross(camera_parameter_mat[0][0:3], camera_parameter_mat[2][0:3])
-    c2c3_cross = np.cross(camera_parameter_mat[1][0:3], camera_parameter_mat[2][0:3])
+    u0 = np.dot(c1, c3)
+    v0 = np.dot(c2, c3)
+
+    c1c3_cross = np.cross(c1, c3)
+    c2c3_cross = np.cross(c2, c3)
     cos = -np.dot(c1c3_cross, c2c3_cross) / (np.linalg.norm(c1c3_cross) * np.linalg.norm(c2c3_cross))
     sin = math.sqrt(1 - cos*cos)
     cot = cos / sin
-    internal_param[0][0] = np.linalg.norm(c1c3_cross) * sin
-    internal_param[0][1] = -internal_param[0][0] * cot
-    internal_param[1][1] = np.linalg.norm(c2c3_cross)
+    alfa_u = np.linalg.norm(c1c3_cross) * sin
+    alfa_v = np.linalg.norm(c2c3_cross) * sin
 
-    external_param[1][0:3] = internal_param[1][1] * (camera_parameter_mat[1][0:3] - internal_param[1][2] * external_param[2][0:3])
-    external_param[1][3] = internal_param[1][1] * (camera_parameter_mat[1][3] - internal_param[1][2] * external_param[2][3])
+    r2 = (c2 - v0 * r3) * sin / alfa_v
+    ty = (camera_parameter_mat[1][3] - v0 * tz) * sin / alfa_v
 
-    external_param[0][0:3] = (camera_parameter_mat[0][0:3] + internal_param[0][0]*cot*external_param[1][0:3] - internal_param[0][2] * external_param[2][0:3]) / internal_param[0][0]
-    external_param[0][3] = (camera_parameter_mat[0][3] + internal_param[0][0]*cot*external_param[1][3] - internal_param[0][2] * external_param[2][3]) / internal_param[0][0]
+    r1 = (c1 + alfa_u*cot*r2 - u0 * r3) / alfa_u
+    tx = (camera_parameter_mat[0][3] + alfa_u*cot*ty - u0 * tz) / alfa_u
 
+
+    external_param = np.array([
+        [r1[0], r1[1], r1[2], tx],
+        [r2[0], r2[1], r2[2], ty],
+        [r3[0], r3[1], r3[2], tz],
+        [0, 0, 0, 1]
+    ])
+    internal_param = np.array([
+        [alfa_u, -alfa_u * cot, u0],
+        [0, alfa_v / sin, v0],
+        [0, 0, 1]
+    ])
     return external_param, internal_param
+
 
 def main(csv_filename, skiprows, camera_imagename):
     calibration_data = np.loadtxt(csv_filename, delimiter=',', skiprows=skiprows)
