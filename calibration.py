@@ -2,6 +2,7 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
+import math
 
 
 def calc_camera_param(calibration_data, data_count):
@@ -52,7 +53,38 @@ def reporojection(camera_parameter_mat, world_points, camera_imagename):
     plt.imshow(im_list)
     plt.show()
 
+def separate_param(camera_parameter_mat):
+    internal_param = np.zeros((3, 3))
+    external_param = np.zeros((4, 4))
+    internal_param[2][2] = 1
+    external_param[3][3] = 1
 
+    cp31 = camera_parameter_mat[2][0]
+    cp32 = camera_parameter_mat[2][1]
+    cp33 = camera_parameter_mat[2][2]
+    scale = 1.0 / math.sqrt(cp31*cp31 + cp32*cp32 + cp33*cp33)
+    camera_parameter_mat *= scale
+    external_param[2] = camera_parameter_mat[2]
+
+    internal_param[0][2] = np.dot(camera_parameter_mat[0][0:3], camera_parameter_mat[2][0:3])
+    internal_param[1][2] = np.dot(camera_parameter_mat[1][0:3], camera_parameter_mat[2][0:3])
+
+    c1c3_cross = np.cross(camera_parameter_mat[0][0:3], camera_parameter_mat[2][0:3])
+    c2c3_cross = np.cross(camera_parameter_mat[1][0:3], camera_parameter_mat[2][0:3])
+    cos = -np.dot(c1c3_cross, c2c3_cross) / (np.linalg.norm(c1c3_cross) * np.linalg.norm(c2c3_cross))
+    sin = math.sqrt(1 - cos*cos)
+    cot = cos / sin
+    internal_param[0][0] = np.linalg.norm(c1c3_cross) * sin
+    internal_param[0][1] = -internal_param[0][0] * cot
+    internal_param[1][1] = np.linalg.norm(c2c3_cross)
+
+    external_param[1][0:3] = internal_param[1][1] * (camera_parameter_mat[1][0:3] - internal_param[1][2] * external_param[2][0:3])
+    external_param[1][3] = internal_param[1][1] * (camera_parameter_mat[1][3] - internal_param[1][2] * external_param[2][3])
+
+    external_param[0][0:3] = (camera_parameter_mat[0][0:3] + internal_param[0][0]*cot*external_param[1][0:3] - internal_param[0][2] * external_param[2][0:3]) / internal_param[0][0]
+    external_param[0][3] = (camera_parameter_mat[0][3] + internal_param[0][0]*cot*external_param[1][3] - internal_param[0][2] * external_param[2][3]) / internal_param[0][0]
+
+    return external_param, internal_param
 
 def main(csv_filename, skiprows, camera_imagename):
     calibration_data = np.loadtxt(csv_filename, delimiter=',', skiprows=skiprows)
@@ -63,6 +95,10 @@ def main(csv_filename, skiprows, camera_imagename):
 
     if camera_imagename:
         reporojection(camera_parameter_mat, calibration_data[:, 0:3], camera_imagename)
+
+    external_param, internal_param = separate_param(camera_parameter_mat)
+    print(external_param)
+    print(internal_param)
 
 
 if __name__ == '__main__':
